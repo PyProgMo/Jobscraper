@@ -29,7 +29,7 @@ from jobsearch import anschreiben
 from jobsearch.config import load_config
 from jobsearch.dedupe import merge_pool
 from jobsearch.scoring import score_job
-from jobsearch.scrapers import adzuna_scraper, ba_scraper, web_scraper
+from jobsearch.scrapers import adzuna_scraper, arbeitnow_scraper, ba_scraper, web_scraper
 from jobsearch.storage import load_pool, save_pool
 from jobsearch.tracker import apply_limits, mark_applied, mark_skipped
 
@@ -94,12 +94,14 @@ class JobsucheApp:
 
         ttk.Button(btn_frame, text="Bundesagentur durchsuchen",
                    command=lambda: self._run_scrape(["ba"])).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Arbeitnow durchsuchen",
+                   command=lambda: self._run_scrape(["arbeitnow"])).pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Adzuna durchsuchen",
                    command=lambda: self._run_scrape(["adzuna"])).pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Web-Scraping (Stepstone/Indeed)",
                    command=lambda: self._run_scrape(["web"])).pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Alle Quellen (wie täglicher Cron-Lauf)",
-                   command=lambda: self._run_scrape(["ba", "adzuna", "web"])).pack(side="left", padx=5)
+                   command=lambda: self._run_scrape(["ba", "arbeitnow", "adzuna", "web"])).pack(side="left", padx=5)
 
         self.log_widget = scrolledtext.ScrolledText(frame, height=32, state="disabled")
         self.log_widget.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -128,6 +130,15 @@ class JobsucheApp:
                 self._log("Bundesagentur für Arbeit wird durchsucht...")
                 treffer = ba_scraper.search_all(
                     suche["keywords"], suche["orte"], suche["umkreis_km"],
+                    suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
+                )
+                neue_jobs += treffer
+                self._log(f"  -> {len(treffer)} Treffer.")
+
+            if "arbeitnow" in quellen and cfg["quellen"]["arbeitnow"]["aktiv"]:
+                self._log("Arbeitnow wird durchsucht...")
+                treffer = arbeitnow_scraper.search_all(
+                    suche["keywords"], suche["orte"],
                     suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
                 )
                 neue_jobs += treffer

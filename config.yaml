@@ -23,6 +23,9 @@ suche:
 quellen:
   bundesagentur:
     aktiv: true
+  arbeitnow:
+    # Kostenlose öffentliche API (arbeitnow.com), kein Key nötig.
+    aktiv: true
   adzuna:
     aktiv: true
     # Kostenlos registrieren auf https://developer.adzuna.com/

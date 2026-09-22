@@ -16,9 +16,10 @@ jobsuche/
   gui.py                <- Tkinter-Oberfläche mit 4 Reitern
   jobsearch/
     scrapers/
-      ba_scraper.py      <- Bundesagentur für Arbeit (offizielle API)
-      adzuna_scraper.py  <- Adzuna (offizielle API, braucht kostenlosen Key)
-      web_scraper.py     <- Stepstone + Indeed (HTML-Scraping, fragil)
+      ba_scraper.py        <- Bundesagentur für Arbeit (offizielle API)
+      arbeitnow_scraper.py <- Arbeitnow (offizielle API, kein Key nötig)
+      adzuna_scraper.py    <- Adzuna (offizielle API, braucht kostenlosen Key)
+      web_scraper.py       <- Stepstone + Indeed (HTML-Scraping, fragil)
     dedupe.py            <- Fuzzy-Deduplizierung über Quellen hinweg
     scoring.py           <- Score 0-1000 nach Schlüsselwörtern
     tracker.py           <- Bewerbungslimits & "bereits beworben"
