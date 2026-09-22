@@ -1,7 +1,15 @@
 *.pyc
+__pycache__/
 .venv/
 
-# Persönliche Beispiel-Anschreiben und generierte Anschreiben/Prompts
+# Echte Konfiguration mit ggf. echten API-Keys (Adzuna) - config.example.yaml
+# ist die Vorlage ohne Geheimnisse und bleibt versioniert.
+config.yaml
+
+# Persönliche Beispiel-Anschreiben, generierte Anschreiben/Prompts, der
+# gescrapte Job-Pool, Bewerbungsstatus und Logs - alles personenbezogen
+# bzw. lokal generiert, nichts davon gehört ins Repo.
 Anschreiben_Beispiele/*
 !Anschreiben_Beispiele/README.txt
-data/anschreiben/
+data/
+logs/

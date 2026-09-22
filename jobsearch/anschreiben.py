@@ -12,12 +12,19 @@ Modulares Anbieter-Konzept (siehe config.yaml unter 'anschreiben.anbieter'):
     auf und liefert den fertigen Anschreiben-Text zurück.
 Weitere Anbieter-Typen lassen sich hier ergänzen, ohne die GUI anzufassen.
 """
+import logging
 import os
+import zipfile
+import xml.etree.ElementTree as ET
 from typing import List
 
 import requests
 
 from .schema import Job
+
+log = logging.getLogger(__name__)
+
+_ODT_TEXT_NS = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
 
 PROMPT_TEMPLATE = """Du bist ein professioneller Bewerbungsschreiber. Schreibe ein individuelles, überzeugendes Bewerbungsanschreiben für folgende Stelle:
 
@@ -35,6 +42,19 @@ Stellenbeschreibung:
 Gib ausschließlich den fertigen Anschreiben-Text aus, ohne Erklärungen davor oder danach."""
 
 
+def _odt_zu_text(pfad: str) -> str:
+    """Liest den Fließtext aus einer OpenDocument-Text-Datei (.odt, z.B. von
+    LibreOffice/OpenOffice) - das Format ist ein ZIP-Archiv mit einer
+    content.xml, die die Absätze als <text:p>-Elemente enthält."""
+    with zipfile.ZipFile(pfad) as zf:
+        with zf.open("content.xml") as f:
+            baum = ET.parse(f)
+    absaetze = [
+        "".join(p.itertext()) for p in baum.getroot().iter(f"{{{_ODT_TEXT_NS}}}p")
+    ]
+    return "\n".join(absaetze).strip()
+
+
 def _lade_beispiele(beispiel_ordner: str) -> List[str]:
     if not os.path.isdir(beispiel_ordner):
         return []
@@ -42,12 +62,23 @@ def _lade_beispiele(beispiel_ordner: str) -> List[str]:
     for name in sorted(os.listdir(beispiel_ordner)):
         if name.lower() == "readme.txt":
             continue
-        if name.lower().endswith((".txt", ".md")):
-            pfad = os.path.join(beispiel_ordner, name)
-            with open(pfad, "r", encoding="utf-8") as f:
-                inhalt = f.read().strip()
-            if inhalt:
-                beispiele.append(inhalt)
+        pfad = os.path.join(beispiel_ordner, name)
+        endung = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+
+        try:
+            if endung in ("txt", "md"):
+                with open(pfad, "r", encoding="utf-8") as f:
+                    inhalt = f.read().strip()
+            elif endung == "odt":
+                inhalt = _odt_zu_text(pfad)
+            else:
+                continue
+        except Exception as exc:
+            log.warning("Beispiel-Anschreiben konnte nicht gelesen werden (%s): %s", name, exc)
+            continue
+
+        if inhalt:
+            beispiele.append(inhalt)
     return beispiele
 
 

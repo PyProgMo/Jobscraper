@@ -1,0 +1,120 @@
+# Zentrale Konfiguration für die Jobsuche-Automatisierung
+# Diese Datei ohne Programmierkenntnisse anpassen: Suchbegriffe, Orte,
+# Zugangsdaten und Gewichtungen stehen alle hier.
+
+suche:
+  # Suchbegriffe, die einzeln an jede aktive Quelle geschickt werden
+  # (Ergebnisse werden danach in einem gemeinsamen Pool zusammengeführt).
+  keywords:
+    - "Softwareentwickler Python"
+    - "Data Scientist"
+    - "Automatisierung Messtechnik"
+    - "Applikationsingenieur Optik"
+    - "Chemiker Software"
+    - "Prozessautomatisierung"
+    - "Laboringenieur"
+  orte:
+    - "Würzburg"
+    - ""   # leer = deutschlandweit (bei Bundesagentur/Adzuna)
+  umkreis_km: 100
+  max_alter_tage: 14        # nur Anzeigen der letzten N Tage berücksichtigen
+  ergebnisse_pro_quelle: 50 # Obergrenze pro Suchbegriff+Ort und Quelle
+
+quellen:
+  bundesagentur:
+    aktiv: true
+  adzuna:
+    aktiv: true
+    # Kostenlos registrieren auf https://developer.adzuna.com/
+    app_id: "DEINE_ADZUNA_APP_ID"
+    app_key: "DEIN_ADZUNA_APP_KEY"
+    land: "de"
+  web_scraping:
+    aktiv: true
+    stepstone: true
+    indeed: true
+    request_delay_sekunden: 2.5   # Pause zwischen Anfragen (Rücksicht auf die Server)
+
+dedupe:
+  fuzzy_schwelle: 88   # 0-100: ab wann Titel+Firma über Quellen hinweg als Duplikat gelten
+
+bewerbungslimits:
+  # Pfad zu deinem bestehenden Bewerbungen/-Ordner (relativ zu diesem Projektordner)
+  bewerbungen_ordner: "../Bewerbungen"
+  max_bewerbungen_pro_firma: 2
+  # Optional: volle Firmennamen aus den Jobportalen -> Kürzel, wie sie in deinen
+  # Bewerbungsordnern verwendet werden (Bewerbungen/<Kürzel>_<Kürzel>/). Nur wenn
+  # hier eingetragen, wird der Bewerbungen-Ordner zusätzlich als weicher Hinweis
+  # genutzt (kein automatischer Ausschluss, siehe README).
+  firma_kuerzel: {}
+  #   "Physik Instrumente (PI) GmbH & Co. KG": "PI"
+  #   "attocube systems AG": "ATC"
+
+scoring:
+  # Schlüsselwörter -> Gewicht. Treffer im Stellentitel zählen doppelt,
+  # Treffer nur in der Beschreibung einfach. Negative Werte ziehen ab.
+  keywords:
+    python: 90
+    "c++": 80
+    rust: 40
+    softwareentwicklung: 85
+    softwareentwickler: 85
+    software: 60
+    automatisierung: 85
+    "data science": 80
+    "machine learning": 60
+    optik: 70
+    photonik: 70
+    spektroskopie: 75
+    messtechnik: 75
+    labor: 40
+    chemie: 55
+    chemiker: 55
+    instrumentierung: 75
+    laser: 60
+    prozessautomatisierung: 80
+    digitalisierung: 50
+    embedded: 40
+    promotion: -20
+  standort_bonus:
+    - ["Würzburg", 60]
+    - ["Bayern", 30]
+    - ["Remote", 40]
+    - ["Homeoffice", 40]
+  max_score: 1000
+
+speicher:
+  datenordner: "data"
+  pool_datei: "jobs_pool.json"
+  log_datei: "logs/jobsearch.log"
+
+anschreiben:
+  # Eigene Beispiel-Anschreiben (.txt/.md) hier ablegen - die KI orientiert
+  # sich daran beim Schreibstil. Siehe Anschreiben_Beispiele/README.txt.
+  beispiel_ordner: "Anschreiben_Beispiele"
+  # Generierte Prompts/Anschreiben werden hier zusätzlich als Datei abgelegt.
+  ausgabe_ordner: "data/anschreiben"
+  # Welcher Anbieter unten beim Start der GUI vorausgewählt ist.
+  standard_anbieter: "claude"
+  anbieter:
+    # typ "browser": Prompt wird in die Zwischenablage kopiert und die URL im
+    # Browser geöffnet - du fügst ihn manuell in den Chat ein. Kein API-Key
+    # nötig, keine Kosten.
+    claude:
+      typ: "browser"
+      url: "https://claude.ai/new"
+    chatgpt:
+      typ: "browser"
+      url: "https://chatgpt.com"
+    gemini:
+      typ: "browser"
+      url: "https://gemini.google.com/app"
+    # typ "api_openai_kompatibel": ruft einen OpenAI-kompatiblen
+    # Chat-Completions-Endpunkt direkt auf (POST {base_url}/chat/completions)
+    # und zeigt das fertige Anschreiben direkt in der GUI an. Passt z.B. für
+    # einen lokalen llama.cpp-Server oder andere OpenAI-kompatible Anbieter.
+    lokal:
+      typ: "api_openai_kompatibel"
+      base_url: "http://127.0.0.1:41223/v1"
+      modell: "local-model"
+      api_key: ""  # falls der Endpunkt einen (Dummy-)Key verlangt

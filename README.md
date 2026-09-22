@@ -40,7 +40,12 @@ cd Jobsuche
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+cp config.example.yaml config.yaml
 ```
+
+`config.yaml` ist in `.gitignore` (kann also z.B. einen echten Adzuna-Key
+enthalten, ohne versehentlich mitveröffentlicht zu werden) – `config.example.yaml`
+ist die versionierte Vorlage ohne Geheimnisse.
 
 Falls `tkinter` fehlt (Fehler `ModuleNotFoundError: No module named 'tkinter'`):
 
@@ -126,3 +131,12 @@ python3 tests/smoke_test.py
   Die drei Scraper selbst konnten wegen der Netzwerk-Sandbox hier nicht
   gegen die echten Portale getestet werden – bitte beim ersten Lauf auf
   deinem Rechner kurz prüfen, ob Treffer ankommen.
+
+## Lizenz
+
+GNU General Public License v3.0 (GPLv3) – siehe [LICENSE](LICENSE). Frei
+nutzbar, veränderbar und weiterverbreitbar; abgeleitete Werke müssen unter
+derselben Lizenz offen bleiben. Ohne jede Gewährleistung (siehe
+Lizenztext, Abschnitte 15–16) – insbesondere für das Stepstone/Indeed-
+Scraping gilt: Nutzung auf eigene Verantwortung und im Rahmen der jeweiligen
+Nutzungsbedingungen der Portale.

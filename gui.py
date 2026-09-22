@@ -410,9 +410,14 @@ class JobsucheApp:
         try:
             text = anschreiben.generate_via_api(prompt, anbieter_cfg)
         except Exception as exc:
-            self._log(f"Anschreiben-Generierung fehlgeschlagen ({anbieter_name}): {exc}")
+            # Python löscht die "as exc"-Variable automatisch am Ende des
+            # except-Blocks - bis die per root.after() verzögerte Lambda
+            # tatsächlich läuft, wäre "exc" sonst schon wieder ungebunden.
+            # Deshalb die Meldung sofort in einen normalen String umwandeln.
+            fehlermeldung = str(exc)
+            self._log(f"Anschreiben-Generierung fehlgeschlagen ({anbieter_name}): {fehlermeldung}")
             self.root.after(0, lambda: messagebox.showerror(
-                "Fehler", f"Anschreiben-Generierung über '{anbieter_name}' fehlgeschlagen:\n{exc}",
+                "Fehler", f"Anschreiben-Generierung über '{anbieter_name}' fehlgeschlagen:\n{fehlermeldung}",
             ))
             return
 
