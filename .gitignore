@@ -1,0 +1,7 @@
+*.pyc
+.venv/
+
+# Persönliche Beispiel-Anschreiben und generierte Anschreiben/Prompts
+Anschreiben_Beispiele/*
+!Anschreiben_Beispiele/README.txt
+data/anschreiben/
