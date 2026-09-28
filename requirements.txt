@@ -3,3 +3,4 @@ beautifulsoup4>=4.12
 lxml>=4.9
 rapidfuzz>=3.6
 pyyaml>=6.0
+tkintermapview>=1.29

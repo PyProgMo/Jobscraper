@@ -59,6 +59,8 @@ def search(keyword: str, ort: str, app_id: str, app_key: str, land: str,
                 external_id=str(r.get("id") or r.get("redirect_url") or ""),
                 description=r.get("description", "") or "",
                 date_posted=r.get("created", "") or "",
+                lat=r.get("latitude"),
+                lon=r.get("longitude"),
             ))
             if len(jobs) >= max_ergebnisse:
                 break

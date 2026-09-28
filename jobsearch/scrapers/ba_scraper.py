@@ -31,7 +31,8 @@ log = logging.getLogger(__name__)
 
 def _parse_angebot(a: dict) -> Job:
     lokationen = a.get("stellenlokationen") or []
-    adresse = (lokationen[0].get("adresse") or {}) if lokationen else {}
+    lokation = lokationen[0] if lokationen else {}
+    adresse = lokation.get("adresse") or {}
     ort_str = ", ".join(filter(None, [adresse.get("ort"), adresse.get("region")]))
     refnr = a.get("referenznummer") or a.get("hashId") or a.get("id") or ""
     eintrittszeitraum = a.get("eintrittszeitraum") or {}
@@ -50,6 +51,8 @@ def _parse_angebot(a: dict) -> Job:
             or eintrittszeitraum.get("von")
             or ""
         ),
+        lat=lokation.get("breite"),
+        lon=lokation.get("laenge"),
     )
 
 

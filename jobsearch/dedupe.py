@@ -43,6 +43,10 @@ def merge_pool(new_jobs: List[Job], existing_jobs: List[Job], threshold: int) ->
                 match.merged_sources.append(nj.source)
             if len(nj.description) > len(match.description):
                 match.description = nj.description
+            # Quell-Koordinaten (BA/Adzuna) nachtragen, damit z.B. ein zuerst
+            # über Stepstone gefundener Job auf der Karte exakt sitzt.
+            if match.lat is None and nj.lat is not None:
+                match.lat, match.lon = nj.lat, nj.lon
         else:
             pool.append(nj)
             index_by_company.setdefault(norm_company, []).append(nj)

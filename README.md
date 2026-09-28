@@ -13,7 +13,7 @@ jobsuche/
   config.yaml          <- alle Einstellungen (Suchbegriffe, Orte, Gewichte, Limits)
   requirements.txt
   run_daily.py          <- headless, für den Cron-Job
-  gui.py                <- Tkinter-Oberfläche mit 4 Reitern
+  gui.py                <- Tkinter-Oberfläche mit 5 Reitern
   jobsearch/
     scrapers/
       ba_scraper.py        <- Bundesagentur für Arbeit (offizielle API)
@@ -72,7 +72,7 @@ sudo apt install python3-tk
 ```bash
 python3 gui.py
 ```
-Vier Reiter:
+Fünf Reiter:
 1. **Scraper** – Suche manuell anstoßen (einzeln oder alle Quellen), Live-Log.
 2. **Pool & Sortierung** – Kennzahlen, "Neu bewerten" ohne neue Suche (nützlich
    nach Änderungen an den Scoring-Gewichten).
@@ -80,6 +80,16 @@ Vier Reiter:
 4. **Ergebnis** – offene Treffer, **Score absteigend sortiert (beste Stelle
    oben)**. Doppelklick öffnet die Anzeige im Browser. Buttons zum Markieren
    als "beworben" oder "ignorieren", CSV-Export.
+5. **Standorte** – Karte (OpenStreetMap) mit allen Stellen als Stecknadeln.
+   Beim Heraus-/Hineinzoomen werden nahe Orte neu zu Gruppen zusammengefasst
+   ("Würzburg, Kitzingen +3 (72)"); ab Stadtebene hat jede Stelle ihre eigene
+   Nadel. Nadelfarbe = Score (rot = niedrig, grün = hoch; bei Gruppen der
+   beste Score darin). Zwei Regler filtern nach Score-Bereich. Klick auf eine
+   Nadel listet die Stellen dort rechts auf, Doppelklick öffnet die Anzeige.
+   Ortsnamen ohne mitgelieferte Koordinaten werden einmalig über Nominatim
+   (OpenStreetMap, max. 1 Anfrage/Sekunde) nachgeschlagen und in
+   `data/geocache.json` gespeichert – beim ersten Start kann es daher ein
+   paar Minuten dauern, bis alle Orte auf der Karte sind.
 
 > Du hattest "aufsteigend" geschrieben – ich bin davon ausgegangen, dass du
 > die besten Treffer oben sehen willst, also nach Score absteigend. Falls du

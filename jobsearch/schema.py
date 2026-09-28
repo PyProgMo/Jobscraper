@@ -23,6 +23,10 @@ class Job:
     description: str = ""
     date_posted: str = ""       # Datum als String, falls von der Quelle geliefert
     remote: Optional[bool] = None
+    # Koordinaten, falls die Quelle sie mitliefert (BA, Adzuna); sonst ermittelt
+    # jobsearch/geo.py sie für die Karte aus dem Ortsnamen.
+    lat: Optional[float] = None
+    lon: Optional[float] = None
 
     # wird von der Pipeline befüllt, nicht beim Scrapen selbst
     id: str = field(default="", init=False)
@@ -45,7 +49,7 @@ class Job:
             title=d["title"], company=d["company"], location=d["location"],
             url=d["url"], source=d["source"], external_id=d["external_id"],
             description=d.get("description", ""), date_posted=d.get("date_posted", ""),
-            remote=d.get("remote"),
+            remote=d.get("remote"), lat=d.get("lat"), lon=d.get("lon"),
         )
         job.id = d.get("id", job.id)
         job.score = d.get("score", 0.0)
