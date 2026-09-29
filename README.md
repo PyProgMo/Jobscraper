@@ -1,6 +1,7 @@
 # Jobsuche – Automatisierung
 
-Durchsucht täglich drei Quellen nach offenen Stellen, poolt und dedupliziert
+Durchsucht täglich mehrere Quellen (siehe `jobsearch/scrapers/`) nach offenen
+Stellen, poolt und dedupliziert
 die Treffer, bewertet jede Stelle mit einem Score 0–1000 nach Passung zu
 deinem Profil, und vermeidet Doppelbewerbungen sowie zu viele gleichzeitige
 Bewerbungen bei derselben Firma. Ergebnis: eine Liste offener Stellen,
@@ -16,10 +17,13 @@ jobsuche/
   gui.py                <- Tkinter-Oberfläche mit 5 Reitern
   jobsearch/
     scrapers/
-      ba_scraper.py        <- Bundesagentur für Arbeit (offizielle API)
-      arbeitnow_scraper.py <- Arbeitnow (offizielle API, kein Key nötig)
-      adzuna_scraper.py    <- Adzuna (offizielle API, braucht kostenlosen Key)
-      web_scraper.py       <- Stepstone + Indeed (HTML-Scraping, fragil)
+      __init__.py           <- bündelt den Zugriff auf alle Quellen (scrape())
+      ba_scraper.py          <- Bundesagentur für Arbeit (offizielle API)
+      arbeitnow_scraper.py   <- Arbeitnow (offizielle API, kein Key nötig)
+      adzuna_scraper.py      <- Adzuna (offizielle API, braucht kostenlosen Key)
+      stepstone_scraper.py   <- Stepstone (HTML-Scraping, fragil)
+      indeed_scraper.py      <- Indeed (HTML-Scraping, fragil)
+      _http.py               <- gemeinsame Anfrage-Hilfsfunktion für die beiden obigen
     dedupe.py            <- Fuzzy-Deduplizierung über Quellen hinweg
     scoring.py           <- Score 0-1000 nach Schlüsselwörtern
     tracker.py           <- Bewerbungslimits & "bereits beworben"

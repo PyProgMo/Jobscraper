@@ -32,11 +32,12 @@ quellen:
     app_id: "DEINE_ADZUNA_APP_ID"
     app_key: "DEIN_ADZUNA_APP_KEY"
     land: "de"
-  web_scraping:
+  stepstone:
     aktiv: true
-    stepstone: true
-    indeed: true
-    request_delay_sekunden: 2.5   # Pause zwischen Anfragen (Rücksicht auf die Server)
+    request_delay_sekunden: 2.5   # Pause zwischen Anfragen (Rücksicht auf den Server)
+  indeed:
+    aktiv: true
+    request_delay_sekunden: 2.5
 
 dedupe:
   fuzzy_schwelle: 88   # 0-100: ab wann Titel+Firma über Quellen hinweg als Duplikat gelten

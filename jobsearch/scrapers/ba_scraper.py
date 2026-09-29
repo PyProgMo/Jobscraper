@@ -26,7 +26,14 @@ from ..schema import Job
 BASE_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs"
 API_KEY = "jobboerse-jobsuche"
 
+NAME = "bundesagentur"
+ANZEIGENAME = "Bundesagentur für Arbeit"
+
 log = logging.getLogger(__name__)
+
+
+def ist_aktiv(cfg: dict) -> bool:
+    return cfg["quellen"][NAME]["aktiv"]
 
 
 def _parse_angebot(a: dict) -> Job:
@@ -102,9 +109,12 @@ def search(keyword: str, ort: str, umkreis_km: int, max_alter_tage: int, max_erg
     return jobs
 
 
-def search_all(keywords, orte, umkreis_km, max_alter_tage, max_ergebnisse) -> List[Job]:
+def search_all(cfg: dict) -> List[Job]:
+    suche = cfg["suche"]
     results: List[Job] = []
-    for kw in keywords:
-        for ort in orte:
-            results.extend(search(kw, ort, umkreis_km, max_alter_tage, max_ergebnisse))
+    for kw in suche["keywords"]:
+        for ort in suche["orte"]:
+            results.extend(search(
+                kw, ort, suche["umkreis_km"], suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
+            ))
     return results

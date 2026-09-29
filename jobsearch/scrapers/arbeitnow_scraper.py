@@ -26,7 +26,14 @@ from ..schema import Job
 BASE_URL = "https://www.arbeitnow.com/api/job-board-api"
 MAX_SEITEN = 5  # 5 * 250 = bis zu 1250 aktuelle Angebote pro Lauf
 
+NAME = "arbeitnow"
+ANZEIGENAME = "Arbeitnow"
+
 log = logging.getLogger(__name__)
+
+
+def ist_aktiv(cfg: dict) -> bool:
+    return cfg["quellen"][NAME]["aktiv"]
 
 # Best-effort-Liste großer deutscher Städte für die "deutschlandweit"-Filterung
 # (orte=""), da die API kein strukturiertes Land-/Region-Feld liefert. Nicht
@@ -117,25 +124,28 @@ def _parse_eintrag(e: dict) -> Job:
         company=(e.get("company_name") or "Unbekannt").strip(),
         location=e.get("location") or ("Remote" if e.get("remote") else ""),
         url=e.get("url") or "",
-        source="arbeitnow",
+        source=NAME,
         external_id=e.get("slug") or e.get("url") or "",
         description=e.get("description", "") or "",
         date_posted=_unix_zu_datum(e.get("created_at")),
     )
 
 
-def search_all(keywords, orte, max_alter_tage: int, max_ergebnisse: int) -> List[Job]:
+def search_all(cfg: dict) -> List[Job]:
+    suche = cfg["suche"]
+    max_ergebnisse = suche["ergebnisse_pro_quelle"]
+
     feed = _hole_feed(MAX_SEITEN)
     if not feed:
         return []
 
-    grenze = time.time() - max_alter_tage * 86400
+    grenze = time.time() - suche["max_alter_tage"] * 86400
     aktuell = [e for e in feed if (e.get("created_at") or 0) >= grenze]
 
     ergebnisse: List[Job] = []
     gesehene_urls = set()
-    for kw in keywords:
-        for ort in orte:
+    for kw in suche["keywords"]:
+        for ort in suche["orte"]:
             treffer = 0
             for e in aktuell:
                 url = e.get("url") or ""

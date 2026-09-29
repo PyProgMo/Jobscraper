@@ -14,7 +14,7 @@ sys.path.insert(0, BASISORDNER)
 from jobsearch.config import load_config
 from jobsearch.dedupe import merge_pool
 from jobsearch.scoring import score_job
-from jobsearch.scrapers import adzuna_scraper, arbeitnow_scraper, ba_scraper, web_scraper
+from jobsearch import scrapers
 from jobsearch.storage import load_pool, save_pool
 from jobsearch.tracker import apply_limits
 
@@ -33,40 +33,7 @@ def main():
     log = logging.getLogger("run_daily")
     log.info("=== Starte tägliche Jobsuche ===")
 
-    suche = cfg["suche"]
-    quellen = cfg["quellen"]
-    neue_jobs = []
-
-    if quellen["bundesagentur"]["aktiv"]:
-        log.info("Suche bei der Bundesagentur für Arbeit...")
-        neue_jobs += ba_scraper.search_all(
-            suche["keywords"], suche["orte"], suche["umkreis_km"],
-            suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
-        )
-
-    if quellen["arbeitnow"]["aktiv"]:
-        log.info("Suche bei Arbeitnow...")
-        neue_jobs += arbeitnow_scraper.search_all(
-            suche["keywords"], suche["orte"],
-            suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
-        )
-
-    if quellen["adzuna"]["aktiv"]:
-        log.info("Suche bei Adzuna...")
-        neue_jobs += adzuna_scraper.search_all(
-            suche["keywords"], suche["orte"],
-            quellen["adzuna"]["app_id"], quellen["adzuna"]["app_key"], quellen["adzuna"]["land"],
-            suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
-        )
-
-    if quellen["web_scraping"]["aktiv"]:
-        log.info("Suche per Web-Scraping (Stepstone/Indeed)...")
-        neue_jobs += web_scraper.search_all(
-            suche["keywords"], suche["orte"],
-            quellen["web_scraping"]["stepstone"], quellen["web_scraping"]["indeed"],
-            quellen["web_scraping"]["request_delay_sekunden"], suche["ergebnisse_pro_quelle"],
-        )
-
+    neue_jobs = scrapers.scrape(scrapers.NAMEN, cfg, log=log.info)
     log.info("Insgesamt %d neue Roh-Treffer gefunden.", len(neue_jobs))
 
     pool_pfad = os.path.join(BASISORDNER, speicher["datenordner"], speicher["pool_datei"])

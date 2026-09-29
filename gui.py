@@ -33,11 +33,10 @@ except ImportError:  # Karte ist optional - der Rest der GUI soll trotzdem laufe
 BASISORDNER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASISORDNER)
 
-from jobsearch import anschreiben, geo
+from jobsearch import anschreiben, geo, scrapers
 from jobsearch.config import load_config
 from jobsearch.dedupe import merge_pool
 from jobsearch.scoring import score_job
-from jobsearch.scrapers import adzuna_scraper, arbeitnow_scraper, ba_scraper, web_scraper
 from jobsearch.storage import load_pool, save_pool
 from jobsearch.tracker import apply_limits, mark_applied, mark_skipped
 
@@ -107,16 +106,14 @@ class JobsucheApp:
         btn_frame = ttk.Frame(frame)
         btn_frame.pack(fill="x", padx=10, pady=10)
 
-        ttk.Button(btn_frame, text="Bundesagentur durchsuchen",
-                   command=lambda: self._run_scrape(["ba"])).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Arbeitnow durchsuchen",
-                   command=lambda: self._run_scrape(["arbeitnow"])).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Adzuna durchsuchen",
-                   command=lambda: self._run_scrape(["adzuna"])).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Web-Scraping (Stepstone/Indeed)",
-                   command=lambda: self._run_scrape(["web"])).pack(side="left", padx=5)
+        # Ein Button pro registriertem Quellen-Scraper (siehe
+        # jobsearch/scrapers/__init__.py) - neue Quellen tauchen hier
+        # automatisch auf, ohne gui.py anzufassen.
+        for modul in scrapers.ALLE:
+            ttk.Button(btn_frame, text=f"{modul.ANZEIGENAME} durchsuchen",
+                       command=lambda n=modul.NAME: self._run_scrape([n])).pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Alle Quellen (wie täglicher Cron-Lauf)",
-                   command=lambda: self._run_scrape(["ba", "arbeitnow", "adzuna", "web"])).pack(side="left", padx=5)
+                   command=lambda: self._run_scrape(scrapers.NAMEN)).pack(side="left", padx=5)
 
         self.log_widget = scrolledtext.ScrolledText(frame, height=32, state="disabled")
         self.log_widget.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -138,46 +135,8 @@ class JobsucheApp:
 
     def _scrape_worker(self, quellen):
         cfg = self.cfg
-        suche = cfg["suche"]
-        neue_jobs = []
         try:
-            if "ba" in quellen and cfg["quellen"]["bundesagentur"]["aktiv"]:
-                self._log("Bundesagentur für Arbeit wird durchsucht...")
-                treffer = ba_scraper.search_all(
-                    suche["keywords"], suche["orte"], suche["umkreis_km"],
-                    suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
-                )
-                neue_jobs += treffer
-                self._log(f"  -> {len(treffer)} Treffer.")
-
-            if "arbeitnow" in quellen and cfg["quellen"]["arbeitnow"]["aktiv"]:
-                self._log("Arbeitnow wird durchsucht...")
-                treffer = arbeitnow_scraper.search_all(
-                    suche["keywords"], suche["orte"],
-                    suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
-                )
-                neue_jobs += treffer
-                self._log(f"  -> {len(treffer)} Treffer.")
-
-            if "adzuna" in quellen and cfg["quellen"]["adzuna"]["aktiv"]:
-                self._log("Adzuna wird durchsucht...")
-                treffer = adzuna_scraper.search_all(
-                    suche["keywords"], suche["orte"],
-                    cfg["quellen"]["adzuna"]["app_id"], cfg["quellen"]["adzuna"]["app_key"],
-                    cfg["quellen"]["adzuna"]["land"], suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
-                )
-                neue_jobs += treffer
-                self._log(f"  -> {len(treffer)} Treffer.")
-
-            if "web" in quellen and cfg["quellen"]["web_scraping"]["aktiv"]:
-                self._log("Stepstone/Indeed werden durchsucht (langsam, bitte warten)...")
-                treffer = web_scraper.search_all(
-                    suche["keywords"], suche["orte"],
-                    cfg["quellen"]["web_scraping"]["stepstone"], cfg["quellen"]["web_scraping"]["indeed"],
-                    cfg["quellen"]["web_scraping"]["request_delay_sekunden"], suche["ergebnisse_pro_quelle"],
-                )
-                neue_jobs += treffer
-                self._log(f"  -> {len(treffer)} Treffer.")
+            neue_jobs = scrapers.scrape(quellen, cfg, log=self._log)
 
             self._log(f"Insgesamt {len(neue_jobs)} Roh-Treffer. Dedupliziere & bewerte...")
             self.pool = merge_pool(neue_jobs, self.pool, cfg["dedupe"]["fuzzy_schwelle"])
@@ -377,6 +336,14 @@ class JobsucheApp:
             self.tree_karte.column(col, width=width, anchor="w")
         self.tree_karte.pack(fill="both", expand=True)
         self.tree_karte.bind("<Double-1>", lambda e: self._open_selected(self.tree_karte))
+
+        karte_btns = ttk.Frame(liste_frame)
+        karte_btns.pack(fill="x", pady=(5, 0))
+        ttk.Button(karte_btns, text="Webseite öffnen",
+                   command=lambda: self._open_selected(self.tree_karte)).pack(side="left", padx=(0, 5))
+        ttk.Button(karte_btns, text="KI-Anschreiben erstellen",
+                   command=lambda: self._create_anschreiben(self.tree_karte)).pack(side="left")
+
         paned.add(liste_frame, weight=1)
 
         # 1x1-Bild als "unsichtbare" Stecknadel für reine Ortsbeschriftungen
@@ -783,8 +750,8 @@ class JobsucheApp:
         self._refresh_tables()
 
     # ---------------- KI-Anschreiben ----------------
-    def _create_anschreiben(self):
-        job = self._get_selected_job(self.tree_alle)
+    def _create_anschreiben(self, tree=None):
+        job = self._get_selected_job(tree or self.tree_alle)
         if not job:
             messagebox.showinfo("Keine Auswahl", "Bitte zuerst eine Stelle in der Tabelle auswählen.")
             return

@@ -10,7 +10,14 @@ import requests
 
 from ..schema import Job
 
+NAME = "adzuna"
+ANZEIGENAME = "Adzuna"
+
 log = logging.getLogger(__name__)
+
+
+def ist_aktiv(cfg: dict) -> bool:
+    return cfg["quellen"][NAME]["aktiv"]
 
 
 def search(keyword: str, ort: str, app_id: str, app_key: str, land: str,
@@ -55,7 +62,7 @@ def search(keyword: str, ort: str, app_id: str, app_key: str, land: str,
                 company=company.strip(),
                 location=location,
                 url=r.get("redirect_url", "") or "",
-                source="adzuna",
+                source=NAME,
                 external_id=str(r.get("id") or r.get("redirect_url") or ""),
                 description=r.get("description", "") or "",
                 date_posted=r.get("created", "") or "",
@@ -72,7 +79,9 @@ def search(keyword: str, ort: str, app_id: str, app_key: str, land: str,
     return jobs
 
 
-def search_all(keywords, orte, app_id, app_key, land, max_alter_tage, max_ergebnisse) -> List[Job]:
+def search_all(cfg: dict) -> List[Job]:
+    quelle_cfg = cfg["quellen"][NAME]
+    app_id, app_key = quelle_cfg["app_id"], quelle_cfg["app_key"]
     results: List[Job] = []
     if not app_id or "DEINE" in app_id or not app_key or "DEIN_" in app_key:
         log.warning(
@@ -82,7 +91,11 @@ def search_all(keywords, orte, app_id, app_key, land, max_alter_tage, max_ergebn
         )
         return results
 
-    for kw in keywords:
-        for ort in orte:
-            results.extend(search(kw, ort, app_id, app_key, land, max_alter_tage, max_ergebnisse))
+    suche = cfg["suche"]
+    for kw in suche["keywords"]:
+        for ort in suche["orte"]:
+            results.extend(search(
+                kw, ort, app_id, app_key, quelle_cfg["land"],
+                suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
+            ))
     return results
