@@ -33,11 +33,13 @@ def ist_aktiv(cfg: dict) -> bool:
     return cfg["quellen"][NAME]["aktiv"]
 
 
-def search(keyword: str, ort: str, delay: float, max_ergebnisse: int) -> List[Job]:
+def search(keyword: str, ort: str, delay: float, max_ergebnisse: int, umkreis_km: int = 0) -> List[Job]:
     jobs: List[Job] = []
     query = quote_plus(keyword)
     if ort:
         url = f"https://www.stepstone.de/jobs/{query}/in-{quote_plus(ort)}"
+        if umkreis_km:
+            url += f"?radius={umkreis_km}"
     else:
         url = f"https://www.stepstone.de/jobs/{query}"
 
@@ -86,5 +88,5 @@ def search_all(cfg: dict) -> List[Job]:
     ergebnisse: List[Job] = []
     for kw in suche["keywords"]:
         for ort in suche["orte"]:
-            ergebnisse.extend(search(kw, ort, delay, suche["ergebnisse_pro_quelle"]))
+            ergebnisse.extend(search(kw, ort, delay, suche["ergebnisse_pro_quelle"], suche["umkreis_km"]))
     return ergebnisse

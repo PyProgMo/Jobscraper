@@ -224,6 +224,14 @@ def orte_sammeln(jobs: List[Job], geocoder: Geocoder) -> Tuple[List[Ort], int]:
     return list(orte.values()), ohne_ort
 
 
+def luftlinie_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Großkreis-Entfernung (Haversine) in km."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 2 * 6371.0 * math.asin(math.sqrt(a))
+
+
 def welt_pixel(lat: float, lon: float, zoom: int) -> Tuple[float, float]:
     """Web-Mercator-Pixelkoordinate (256er-Kacheln) - dieselbe Projektion wie
     die OSM-Kacheln der Karte, damit Cluster-Radien echte Bildschirm-Pixel sind."""

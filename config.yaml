@@ -5,24 +5,67 @@
 suche:
   # Suchbegriffe, die einzeln an jede aktive Quelle geschickt werden
   # (Ergebnisse werden danach in einem gemeinsamen Pool zusammengeführt).
+  # Der lokale Arbeitsmarkt ist klein: lieber viele kurze Begriffe als wenige
+  # lange - die Vorauswahl übernimmt danach der Abschnitt 'passung' unten.
   keywords:
     - "Softwareentwickler Python"
+    - "Python"
+    - "C++"
+    - "Softwareentwickler"
+    - "Softwareentwicklung"
     - "Data Scientist"
-    - "Automatisierung Messtechnik"
-    - "Applikationsingenieur Optik"
-    - "Chemiker Software"
+    - "Data Analyst"
+    - "Machine Learning"
+    - "Automatisierung"
     - "Prozessautomatisierung"
+    - "Laborautomatisierung"
+    - "Messtechnik"
+    - "Spektroskopie"
+    - "Optik"
+    - "Photonik"
+    - "Laser"
+    - "Sensorik"
+    - "Applikationsingenieur"
+    - "Application Engineer"
+    - "Chemiker"
+    - "Chemie"
+    - "Chemieingenieur"
+    - "Physiker"
+    - "Labor"
     - "Laboringenieur"
+    - "LIMS"
+    - "Analytik"
+    - "Wissenschaftlicher Mitarbeiter"
+    - "Forschung Entwicklung"
+    - "Entwicklungsingenieur"
+    - "Technischer Support"
+    - "Systemadministrator"
+    - "DevOps"
+    - "Embedded"
+    - "LabVIEW"
+    - "Gefahrstoff"
+    - "Regulatory Affairs"
+    - "Prozessingenieur"
+    - "Versuchsingenieur"
+    - "Technische Assistenz"
+    - "Umwelt"
+    - "Verfahrenstechnik"
+    - "Simulation"
+    - "Technischer Redakteur"
+    - "Junior"
   orte:
     - "Würzburg"
-    - ""   # leer = deutschlandweit (bei Bundesagentur/Adzuna)
-  umkreis_km: 100
-  max_alter_tage: 14        # nur Anzeigen der letzten N Tage berücksichtigen
+  umkreis_km: 20
+  max_alter_tage: 60        # lokal erscheinen wenige Stellen - ältere Anzeigen sind oft noch offen
   ergebnisse_pro_quelle: 50 # Obergrenze pro Suchbegriff+Ort und Quelle
 
 quellen:
   bundesagentur:
     aktiv: true
+    # Die Trefferliste enthält keinen Anzeigentext - ohne Details lässt sich
+    # nicht beurteilen, ob die Anforderungen zu dir passen (kostet pro Stelle
+    # eine weitere, kurze Anfrage).
+    details_laden: true
   arbeitnow:
     # Kostenlose öffentliche API (arbeitnow.com), kein Key nötig.
     aktiv: true
@@ -36,7 +79,7 @@ quellen:
     aktiv: true
     request_delay_sekunden: 2.5   # Pause zwischen Anfragen (Rücksicht auf den Server)
   indeed:
-    aktiv: true
+    aktiv: false   # liefert aktuell nur 403 (Bot-Erkennung), siehe indeed_scraper.py
     request_delay_sekunden: 2.5
 
 dedupe:
@@ -51,6 +94,33 @@ bewerbungslimits:
   # hier eingetragen, wird der Bewerbungen-Ordner zusätzlich als weicher Hinweis
   # genutzt (kein automatischer Ausschluss, siehe README).
   firma_kuerzel: {}
+  # Ordner mit deinen Bewerbungen: Unterordner "abgelehnt/" = Absagen, übrige
+  # Ordner = Bewerbung vorbereitet/verschickt. Es werden nur Ordnernamen gelesen
+  # und als Hinweis im Reiter "Empfehlungen" angezeigt (siehe jobsearch/historie.py).
+  historie_ordner: "~/Dokumente"
+  historie_abgelehnt_unterordner: "abgelehnt"
+  # Ordnername -> Firmen-Stichworte, wo die automatische Ableitung aus dem
+  # Ordnernamen nicht passt (Tippfehler, zu allgemein). [] = nie zuordnen.
+  historie_schluessel:
+    Frauenhofer_initiativ: [fraunhofer]
+    Fercherau_C++_Med: [ferchau]
+    DevOps_Automation_Dedalus: [dedalus]
+    North_data: [northdata]
+    computer_futures: [computerfutures]
+    Uniklinikum_Software: [universitaetsklinikum]
+    UniklinikumLaborkoordinator: [universitaetsklinikum]
+    WORK_Microwave: []
+    physik1_klembt: []
+    SCADA_HMI_SSI: []
+  historie_ignorieren:
+    - "abgelehnt"
+    - "alt"
+    - "Anschreiben_Vorlage"
+    - "B1"
+    - "compresspdf"
+    - "Jobs"
+    - "Lebenslauf"
+    - "Zeugnisse"
   #   "Physik Instrumente (PI) GmbH & Co. KG": "PI"
   #   "attocube systems AG": "ATC"
 
@@ -67,7 +137,7 @@ scoring:
     automatisierung: 85
     "data science": 80
     "machine learning": 60
-    optik: 70
+    optik: 10
     photonik: 70
     spektroskopie: 75
     messtechnik: 75
@@ -86,6 +156,120 @@ scoring:
     - ["Remote", 40]
     - ["Homeoffice", 40]
   max_score: 1000
+
+passung:
+  # Wie realistisch ist eine Einladung? (0-100, siehe jobsearch/fit.py)
+  # Beginnt bei 'start'; Bonus-/Malus-Wörter werden addiert (Treffer im Titel
+  # zählen anderthalbfach). Schreibweise: Wortanfang genügt ("chemi" trifft
+  # Chemie, Chemiker, chemisch); ein "$" am Ende heißt "Wort endet hier".
+  erfahrung_jahre: 2           # deine Berufserfahrung (Wiss. Mitarbeiter seit 07/2024)
+  zentrum: [49.7913, 9.9534]   # Würzburg - Bezugspunkt für die Entfernung
+  max_entfernung_km: 25        # Suchradius ist 20 km; etwas Spielraum für "ungefähr"
+  start: 40
+  malus_pro_fehlendem_jahr: 12 # pro Jahr, das die Anzeige mehr verlangt (1 Jahr Toleranz)
+  malus_mehrjaehrig: 10        # "mehrjährige Berufserfahrung" ohne Zahl
+  malus_studienfach: 12        # verlangt nur Informatik/E-Technik/Maschinenbau ... ohne "oder vergleichbar"
+  ausschluss_titel:            # keine Festanstellung -> Chance 0
+    - ausbildung
+    - azubi
+    - praktikum
+    - praktikant
+    - werkstudent
+    - "duales studium"
+    - minijob
+    - abschlussarbeit
+    - bachelorarbeit
+    - masterarbeit
+  bonus:
+    berufseinsteiger: 20
+    berufseinstieg: 20
+    absolvent: 15
+    quereinsteiger: 18
+    "ohne berufserfahrung": 15
+    "keine berufserfahrung": 15
+    trainee: 8
+    "junior$": 12
+    naturwissenschaft: 12
+    chemi: 12
+    physik: 8
+    spektroskopie: 12
+    messtechnik: 10
+    laborautomat: 14
+    labor: 5
+    analytik: 6
+    python: 14
+    "c++": 12
+    labview: 12
+    linux: 6
+    docker: 5
+    "git$": 3
+    datenanalyse: 8
+    "data science": 8
+    gerätesteuerung: 10
+    wissenschaftlich: 5
+    forschung: 5
+    "oder vergleichbar": 5
+  malus:   # Anforderungen/Technologien, die dir fehlen (negative Werte)
+    "abgeschlossene promotion": -25
+    promovierte: -20
+    "promoviert$": -20
+    "phd$": -10
+    doktorand: -15
+    meister: -12
+    "techniker$": -10
+    "techniker/": -10
+    fachinformatiker: -14
+    elektroniker: -18
+    mechatroniker: -18
+    "abgeschlossene berufsausbildung": -8
+    "abgeschlossene ausbildung": -8
+    "sps$": -14
+    "tia portal": -14
+    "step 7": -14
+    "sap$": -10
+    "c#": -10
+    ".net": -10
+    "java$": -8
+    angular: -8
+    "react$": -8
+    "php$": -10
+    typescript: -6
+  titel_malus:   # nur im Stellentitel geprüft (Rollen, die Erfahrung oder ein anderes Berufsfeld voraussetzen)
+    "senior": -25
+    "erfahren": -15   # "Erfahrene/r ..."
+    "lead$": -12
+    principal: -25
+    "head of": -30
+    teamleiter: -25
+    gruppenleiter: -25
+    abteilungsleiter: -30
+    bereichsleiter: -30
+    laborleiter: -20
+    projektleiter: -12
+    "leiter$": -20
+    "leitung$": -15
+    architekt: -12
+    vertrieb: -22
+    "sales": -15
+    außendienst: -22
+    kundenberater: -15
+    pflegefachkraft: -40
+    pflegekraft: -40
+    fahrer: -40
+    lager: -25
+    monteur: -30
+    elektriker: -30
+    schweiß: -30
+    zerspan: -30
+    verkäufer: -40
+    buchhalt: -40
+    sachbearbeiter: -20
+    disponent: -25
+
+empfehlung:
+  # Welche Stellen der Reiter "Empfehlungen" überhaupt zeigt.
+  min_fit: 50        # Chance (0-100) aus 'passung'
+  min_score: 400     # Themen-Score (0-1000) aus 'scoring' - filtert Stellen ohne Bezug zu deinem Profil
 
 speicher:
   datenordner: "data"

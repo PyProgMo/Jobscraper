@@ -7,6 +7,10 @@ deinem Profil, und vermeidet Doppelbewerbungen sowie zu viele gleichzeitige
 Bewerbungen bei derselben Firma. Ergebnis: eine Liste offener Stellen,
 beste Treffer zuerst.
 
+Für die lokale Suche (Umkreis um Würzburg) gibt es zusätzlich eine Einschätzung,
+**wie realistisch eine Einladung ist**, und einen Reiter **Empfehlungen** mit
+Häkchen für "Beworben" und "Abgelehnt".
+
 ## Aufbau
 
 ```
@@ -25,8 +29,11 @@ jobsuche/
       indeed_scraper.py      <- Indeed (HTML-Scraping, fragil)
       _http.py               <- gemeinsame Anfrage-Hilfsfunktion für die beiden obigen
     dedupe.py            <- Fuzzy-Deduplizierung über Quellen hinweg
-    scoring.py           <- Score 0-1000 nach Schlüsselwörtern
-    tracker.py           <- Bewerbungslimits & "bereits beworben"
+    scoring.py           <- Score 0-1000 nach Schlüsselwörtern (Thema)
+    fit.py               <- Chance 0-100: erfülle ich die Anforderungen? + Entfernung
+    empfehlungen.py      <- Auswahl/Reihenfolge im Reiter "Empfehlungen"
+    historie.py          <- Hinweis "früher abgelehnt" aus den Bewerbungsordnern
+    tracker.py           <- Bewerbungslimits, "beworben", "abgelehnt"
     storage.py
   tests/smoke_test.py    <- Selbsttest ohne Internet
   data/                  <- wird beim ersten Lauf angelegt (jobs_pool.json, applied.json)
@@ -60,6 +67,24 @@ sudo apt install python3-tk
 
 ## Konfiguration (config.yaml)
 
+- **Lokale Suche**: `suche.orte`, `suche.umkreis_km` (20) und `suche.max_alter_tage`
+  (60 – lokal erscheinen wenige Stellen, ältere sind oft noch offen). Bei der
+  Bundesagentur lädt `quellen.bundesagentur.details_laden` zu jeder Stelle den
+  vollen Anzeigentext nach; ohne ihn lässt sich nicht beurteilen, ob die
+  Anforderungen passen.
+- **Chance-Einschätzung** (`passung`): `erfahrung_jahre`, `max_entfernung_km` und
+  Bonus-/Malus-Wörter. Ein Wort-Anfang genügt (`chemi` trifft Chemie/Chemiker),
+  ein `$` am Ende heißt „Wort endet hier“ (`leiter$` trifft nicht „Leiterplatte“).
+  Verlangt eine Anzeige mehr Jahre Erfahrung als du hast (+1 Toleranz), gibt es
+  Abzug. `titel_malus` wird nur im Titel geprüft. Die Begründung pro Stelle steht
+  im Detailbereich des Reiters Empfehlungen.
+- **Empfehlungen** (`empfehlung`): Schwellen `min_fit` und `min_score`, ab denen
+  eine Stelle im Reiter erscheint. Handbewertungen (`data/empfehlungen.json`,
+  Format siehe `jobsearch/empfehlungen.py`) haben Vorrang vor der Automatik.
+- **Bewerbungshistorie** (`bewerbungslimits.historie_*`): Ordner mit deinen
+  Bewerbungen; `abgelehnt/` darin = Absagen. `historie_schluessel` korrigiert die
+  automatische Zuordnung Ordnername → Firma (Tippfehler, zu allgemeine Wörter).
+
 - **Suchbegriffe & Orte** unter `suche` – frei anpassbar, du wolltest bewusst
   breit suchen, also gerne mehr Begriffe/Branchen ergänzen.
 - **Adzuna-Key**: kostenlos auf https://developer.adzuna.com/ registrieren,
@@ -76,7 +101,15 @@ sudo apt install python3-tk
 ```bash
 python3 gui.py
 ```
-Fünf Reiter:
+Sechs Reiter:
+0. **Empfehlungen** – die Arbeitsliste: Stellen im Umkreis, beste Chance zuerst.
+   Klick in die Spalte **Beworben** bzw. **Abgelehnt** setzt/entfernt das Häkchen
+   (Abgelehnt setzt Beworben automatisch mit; beides wird mit Datum in
+   `data/applied.json` / `data/rejected.json` gespeichert). Unten steht die
+   Einschätzung samt Risiken und der Anzeigentext; Doppelklick öffnet die Anzeige.
+   Die Spalte *Hinweis* warnt, wenn zur Firma schon ein Bewerbungsordner existiert
+   oder du dort abgelehnt wurdest (`historie.py`, nur Ordnernamen). Zeilen:
+   grün = Handbewertung "Top"/"Gut", grau = beworben, rot = abgelehnt.
 1. **Scraper** – Suche manuell anstoßen (einzeln oder alle Quellen), Live-Log.
 2. **Pool & Sortierung** – Kennzahlen, "Neu bewerten" ohne neue Suche (nützlich
    nach Änderungen an den Scoring-Gewichten).

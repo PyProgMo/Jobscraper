@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Tkinter-Oberfläche für die Jobsuche-Automatisierung.
 
-Fünf Reiter (ttk.Notebook-Tabs):
+Sechs Reiter (ttk.Notebook-Tabs):
+  0. Empfehlungen       - realistische Treffer im Umkreis, beste Chance zuerst,
+                          mit Häkchen "Beworben" / "Abgelehnt" pro Stelle
   1. Scraper           - Suche manuell anstoßen, Live-Log
   2. Pool & Sortierung - Kennzahlen, neu bewerten ohne neue Suche
   3. Alle Stellen       - kompletter Pool (auch beworbene/limitierte)
@@ -33,12 +35,19 @@ except ImportError:  # Karte ist optional - der Rest der GUI soll trotzdem laufe
 BASISORDNER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASISORDNER)
 
-from jobsearch import anschreiben, geo, scrapers
+from jobsearch import anschreiben, empfehlungen, geo, historie, scrapers
 from jobsearch.config import load_config
 from jobsearch.dedupe import merge_pool
+from jobsearch.fit import assess_fit
 from jobsearch.scoring import score_job
 from jobsearch.storage import load_pool, save_pool
-from jobsearch.tracker import apply_limits, mark_applied, mark_skipped
+from jobsearch.tracker import (
+    apply_limits, mark_applied, mark_rejected, mark_skipped, tracking_daten,
+    unmark_applied, unmark_rejected,
+)
+
+# Stellen, die in "offen"-Ansichten nicht mehr auftauchen sollen
+ERLEDIGT = ("applied", "rejected", "capped", "skipped")
 
 
 class _QueueLogHandler(logging.Handler):
@@ -69,6 +78,9 @@ class JobsucheApp:
             BASISORDNER, self.cfg["speicher"]["datenordner"], "geocache.json"
         ))
         self.log_queue = queue.Queue()
+        self.kuratiert = empfehlungen.lade_kuratiert(BASISORDNER, self.cfg)
+        self.historie = historie.lade_historie(self.cfg)
+        self.tracking = {}
 
         log_handler = _QueueLogHandler(self.log_queue)
         log_handler.setFormatter(logging.Formatter("%(message)s"))
@@ -79,18 +91,21 @@ class JobsucheApp:
         notebook.pack(fill="both", expand=True)
         self.notebook = notebook
 
+        self.tab_empfehlungen = ttk.Frame(notebook)
         self.tab_scraper = ttk.Frame(notebook)
         self.tab_sortierung = ttk.Frame(notebook)
         self.tab_alle = ttk.Frame(notebook)
         self.tab_ergebnis = ttk.Frame(notebook)
         self.tab_standorte = ttk.Frame(notebook)
 
+        notebook.add(self.tab_empfehlungen, text="Empfehlungen")
         notebook.add(self.tab_scraper, text="Scraper")
         notebook.add(self.tab_sortierung, text="Pool & Sortierung")
         notebook.add(self.tab_alle, text="Alle Stellen")
         notebook.add(self.tab_ergebnis, text="Ergebnis")
         notebook.add(self.tab_standorte, text="Standorte")
 
+        self._build_empfehlungen_tab()
         self._build_scraper_tab()
         self._build_sortierung_tab()
         self._build_alle_tab()
@@ -99,6 +114,230 @@ class JobsucheApp:
 
         self._refresh_tables()
         self.root.after(200, self._poll_log_queue)
+
+    # ---------------- Tab: Empfehlungen ----------------
+    HAKEN = {True: "☑", False: "☐"}
+    EMPF_SPALTEN = [  # (Schlüssel, Überschrift, Breite, Ausrichtung)
+        ("beworben", "Beworben", 75, "center"), ("abgelehnt", "Abgelehnt", 80, "center"),
+        ("einschaetzung", "Einschätzung", 100, "w"), ("chance", "Chance", 60, "e"),
+        ("titel", "Titel", 300, "w"), ("firma", "Firma", 190, "w"), ("ort", "Ort", 110, "w"),
+        ("km", "km", 40, "e"), ("hinweis", "Hinweis", 230, "w"),
+    ]
+
+    def _build_empfehlungen_tab(self):
+        frame = self.tab_empfehlungen
+
+        leiste = ttk.Frame(frame)
+        leiste.pack(fill="x", padx=10, pady=(10, 0))
+        ttk.Label(leiste, text="Suche:").pack(side="left")
+        self.empf_suche = tk.StringVar()
+        self.empf_suche.trace_add("write", lambda *_: self._refresh_empfehlungen())
+        ttk.Entry(leiste, textvariable=self.empf_suche, width=22).pack(side="left", padx=(5, 15))
+        self.empf_nur_gute = tk.BooleanVar(value=False)
+        ttk.Checkbutton(leiste, text="Nur Top & Gut", variable=self.empf_nur_gute,
+                        command=self._refresh_empfehlungen).pack(side="left", padx=(0, 10))
+        self.empf_erledigte_ausblenden = tk.BooleanVar(value=False)
+        ttk.Checkbutton(leiste, text="Beworbene/Abgelehnte ausblenden",
+                        variable=self.empf_erledigte_ausblenden,
+                        command=self._refresh_empfehlungen).pack(side="left")
+        self.empf_info = ttk.Label(leiste, text="", foreground="#555")
+        self.empf_info.pack(side="right")
+
+        paned = ttk.PanedWindow(frame, orient="vertical")
+        paned.pack(fill="both", expand=True, padx=10, pady=10)
+
+        oben = ttk.Frame(paned)
+        self.tree_empf_headings = {}
+        self.tree_empf_sort = {"col": None, "reverse": False}
+        # Sortierschlüssel brauchen self.kuratiert/self.tracking, daher hier und nicht als Klassenattribut
+        self.empf_schluessel = {
+            "beworben": lambda j: j.id in self.tracking,
+            "abgelehnt": lambda j: "rejected" in self.tracking.get(j.id, {}),
+            "einschaetzung": lambda j: -empfehlungen.stufe(j, self.kuratiert)[1],
+            "chance": lambda j: empfehlungen.chance(j, self.kuratiert),
+            "titel": lambda j: j.title.lower(),
+            "firma": lambda j: j.company.lower(),
+            "ort": lambda j: j.location.lower(),
+            "km": lambda j: j.distance_km if j.distance_km is not None else 1e9,
+            "hinweis": lambda j: historie.hinweis(j, self.historie).lower(),
+        }
+        self.tree_empf = ttk.Treeview(
+            oben, columns=[c[0] for c in self.EMPF_SPALTEN], show="headings", selectmode="browse")
+        for col, text, breite, anker in self.EMPF_SPALTEN:
+            self.tree_empf_headings[col] = text
+            self.tree_empf.heading(col, text=text, command=lambda c=col: self._sort_tree(
+                self.tree_empf, self.tree_empf_sort, self.empf_schluessel, self.tree_empf_headings, c,
+            ))
+            self.tree_empf.column(col, width=breite, anchor=anker, stretch=col in ("titel", "firma", "hinweis"))
+        scroll = ttk.Scrollbar(oben, orient="vertical", command=self.tree_empf.yview)
+        self.tree_empf.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        self.tree_empf.pack(side="left", fill="both", expand=True)
+        self.tree_empf.tag_configure("top", background="#d8f0d2")
+        self.tree_empf.tag_configure("gut", background="#ecf6d4")
+        self.tree_empf.tag_configure("beworben", foreground="#777")
+        self.tree_empf.tag_configure("abgelehnt", foreground="#b03030")
+        self.tree_empf.bind("<Button-1>", self._empf_klick)
+        self.tree_empf.bind("<<TreeviewSelect>>", self._empf_detail_zeigen)
+        self.tree_empf.bind("<Double-1>", self._empf_doppelklick)
+        paned.add(oben, weight=3)
+
+        unten = ttk.Frame(paned)
+        btns = ttk.Frame(unten)
+        btns.pack(side="bottom", fill="x", pady=(5, 0))
+        ttk.Button(btns, text="Anzeige im Browser öffnen",
+                   command=lambda: self._open_selected(self.tree_empf)).pack(side="left", padx=(0, 5))
+        ttk.Button(btns, text="KI-Anschreiben erstellen",
+                   command=lambda: self._create_anschreiben(self.tree_empf)).pack(side="left", padx=5)
+        ttk.Button(btns, text="Nicht interessant (ausblenden)",
+                   command=self._empf_ignorieren).pack(side="left", padx=5)
+        ttk.Label(btns, text="Häkchen: in Spalte Beworben/Abgelehnt klicken",
+                  foreground="#555").pack(side="right")
+        self.empf_detail = scrolledtext.ScrolledText(unten, height=11, wrap="word", state="disabled")
+        self.empf_detail.pack(fill="both", expand=True)
+        self.empf_detail.tag_configure("kopf", font=("TkDefaultFont", 11, "bold"))
+        self.empf_detail.tag_configure("abschnitt", font=("TkDefaultFont", 9, "bold"), foreground="#2a5d8f")
+        paned.add(unten, weight=2)
+
+    def _job_by_id(self, job_id):
+        return next((j for j in self.pool if j.id == job_id), None)
+
+    def _refresh_empfehlungen(self):
+        tree = self.tree_empf
+        auswahl_alt = tree.selection()
+        ansicht = tree.yview()[0]
+        self.tracking = tracking_daten(BASISORDNER, self.cfg)
+
+        jobs = empfehlungen.auswahl(self.pool, self.cfg, self.kuratiert, self.tracking)
+        gesamt = len(jobs)
+        suche = self.empf_suche.get().strip().lower()
+        if suche:
+            jobs = [j for j in jobs if suche in f"{j.title} {j.company} {j.location}".lower()]
+        if self.empf_nur_gute.get():
+            jobs = [j for j in jobs if empfehlungen.stufe(j, self.kuratiert)[1] <= 1]
+        if self.empf_erledigte_ausblenden.get():
+            jobs = [j for j in jobs if j.id not in self.tracking]
+
+        # Die Spaltenpfeile gehören zur alten Reihenfolge, die hier neu aufgebaut wird
+        self.tree_empf_sort = {"col": None, "reverse": False}
+        for c, text in self.tree_empf_headings.items():
+            tree.heading(c, text=text)
+        tree.delete(*tree.get_children())
+        for j in jobs:
+            tree.insert("", "end", iid=j.id, values=self._empf_werte(j), tags=self._empf_tags(j))
+        if auswahl_alt and tree.exists(auswahl_alt[0]):
+            tree.selection_set(auswahl_alt[0])
+        tree.yview_moveto(ansicht)
+
+        beworben = sum(1 for j in jobs if j.id in self.tracking)
+        abgelehnt = sum(1 for j in jobs if "rejected" in self.tracking.get(j.id, {}))
+        self.empf_info.configure(text=(
+            f"{len(jobs)} von {gesamt} Empfehlungen · {beworben} beworben · {abgelehnt} abgelehnt"
+        ))
+
+    def _empf_werte(self, job):
+        t = self.tracking.get(job.id, {})
+        name, _ = empfehlungen.stufe(job, self.kuratiert)
+        hinweis = historie.hinweis(job, self.historie)
+        if job.status == "capped":
+            hinweis = (hinweis + " · " if hinweis else "") + "Firmenlimit erreicht"
+        return (
+            self.HAKEN[bool(t)], self.HAKEN["rejected" in t],
+            name, int(round(empfehlungen.chance(job, self.kuratiert))),
+            job.title, job.company, job.location.split(",")[0],
+            "?" if job.distance_km is None else f"{job.distance_km:.0f}", hinweis,
+        )
+
+    def _empf_tags(self, job):
+        t = self.tracking.get(job.id, {})
+        if "rejected" in t:
+            return ("abgelehnt",)
+        if t:
+            return ("beworben",)
+        name, rang = empfehlungen.stufe(job, self.kuratiert)
+        return {0: ("top",), 1: ("gut",)}.get(rang, ())
+
+    def _empf_klick(self, event):
+        tree = self.tree_empf
+        if tree.identify_region(event.x, event.y) != "cell":
+            return
+        spalte = {"#1": "beworben", "#2": "abgelehnt"}.get(tree.identify_column(event.x))
+        iid = tree.identify_row(event.y)
+        job = self._job_by_id(iid) if iid else None
+        if not spalte or not job:
+            return
+        self._empf_haken_umschalten(job, spalte)
+        return "break"  # Zeile nicht zusätzlich markieren: mehrere Häkchen in Folge setzen
+
+    def _empf_haken_umschalten(self, job, spalte):
+        t = self.tracking.get(job.id, {})
+        if spalte == "beworben":
+            if t:
+                if "rejected" in t and not messagebox.askyesno(
+                        "Häkchen entfernen", "Die Absage wird dabei ebenfalls entfernt. Fortfahren?"):
+                    return
+                unmark_applied(job, BASISORDNER, self.cfg)
+            else:
+                mark_applied(job, BASISORDNER, self.cfg)
+        elif "rejected" in t:
+            unmark_rejected(job, BASISORDNER, self.cfg)
+        else:
+            mark_rejected(job, BASISORDNER, self.cfg)
+        # Firmenlimits ("capped") hängen von allen Bewerbungen ab -> alles neu berechnen
+        self.pool = apply_limits(self.pool, self.cfg, BASISORDNER)
+        save_pool(self.pool_pfad, self.pool)
+        self._refresh_tables()
+        self._empf_detail_zeigen()
+
+    def _empf_doppelklick(self, event):
+        # Tk meldet den zweiten Klick eines schnellen Klickpaares nur noch als
+        # Doppelklick (nicht mehr als Einzelklick). Auf einem Häkchen soll er wie
+        # bei jeder Checkbox erneut umschalten, sonst öffnet er die Anzeige.
+        if self.tree_empf.identify_column(event.x) in ("#1", "#2"):
+            return self._empf_klick(event)
+        self._open_selected(self.tree_empf)
+
+    def _empf_ignorieren(self):
+        job = self._get_selected_job(self.tree_empf)
+        if not job:
+            return
+        mark_skipped(job, BASISORDNER, self.cfg)
+        save_pool(self.pool_pfad, self.pool)
+        self._refresh_tables()
+
+    def _empf_detail_zeigen(self, _event=None):
+        job = self._get_selected_job(self.tree_empf)
+        box = self.empf_detail
+        box.configure(state="normal")
+        box.delete("1.0", "end")
+        if job:
+            k = self.kuratiert.get(job.id)
+            t = self.tracking.get(job.id, {})
+            entfernung = "" if job.distance_km is None else f" · {job.distance_km:.0f} km"
+            box.insert("end", f"{job.title}\n", "kopf")
+            box.insert("end", f"{job.company} · {job.location}{entfernung} · "
+                              f"{'+'.join(job.merged_sources)}\n{job.url}\n\n")
+            if t:
+                box.insert("end", "Beworben am " + t.get("applied", "?")
+                                  + (f" · Absage am {t['rejected']}" if "rejected" in t else "") + "\n\n")
+            hinweis = historie.hinweis(job, self.historie)
+            if hinweis:
+                box.insert("end", f"Bewerbungshistorie: {hinweis}\n\n")
+            if k:
+                box.insert("end", f"Einschätzung: {empfehlungen.stufe(job, self.kuratiert)[0]} "
+                                  f"(Chance ca. {int(empfehlungen.chance(job, self.kuratiert))} %)\n", "abschnitt")
+                box.insert("end", f"{k.get('begruendung', '')}\n\n")
+                if k.get("risiken"):
+                    box.insert("end", "Risiken / Lücken\n", "abschnitt")
+                    box.insert("end", f"{k['risiken']}\n\n")
+            else:
+                box.insert("end", f"Automatische Einschätzung: Chance {int(job.fit)} / 100\n", "abschnitt")
+                box.insert("end", ("  " + "\n  ".join(job.fit_notes) if job.fit_notes else "  (keine Treffer)") + "\n\n")
+            box.insert("end", "Anzeige\n", "abschnitt")
+            # BA-Texte sind Markdown: **fett** entfernen, Aufzählungsstriche als Punkte zeigen
+            text = re.sub(r"^\s*[-*]\s+", "• ", job.description.replace("**", ""), flags=re.M)
+            box.insert("end", text or "(keine Beschreibung geladen)")
+        box.configure(state="disabled")
 
     # ---------------- Tab: Scraper ----------------
     def _build_scraper_tab(self):
@@ -142,6 +381,7 @@ class JobsucheApp:
             self.pool = merge_pool(neue_jobs, self.pool, cfg["dedupe"]["fuzzy_schwelle"])
             for job in self.pool:
                 score_job(job, cfg)
+                assess_fit(job, cfg, self.geocoder)
             self.pool = apply_limits(self.pool, cfg, BASISORDNER)
             self.pool.sort(key=lambda j: j.score, reverse=True)
             save_pool(self.pool_pfad, self.pool)
@@ -169,8 +409,11 @@ class JobsucheApp:
 
     def _rescore_only(self):
         self.cfg = load_config()
+        self.kuratiert = empfehlungen.lade_kuratiert(BASISORDNER, self.cfg)
+        self.historie = historie.lade_historie(self.cfg)
         for job in self.pool:
             score_job(job, self.cfg)
+            assess_fit(job, self.cfg, self.geocoder)
         self.pool = apply_limits(self.pool, self.cfg, BASISORDNER)
         self.pool.sort(key=lambda j: j.score, reverse=True)
         save_pool(self.pool_pfad, self.pool)
@@ -434,7 +677,7 @@ class JobsucheApp:
         return [
             j for j in self.pool
             if lo <= j.score <= hi + 0.5  # +0.5: Regler zeigt gerundete Werte
-            and not (nur_offen and j.status in ("applied", "capped", "skipped"))
+            and not (nur_offen and j.status in ERLEDIGT)
         ]
 
     def _karte_zeichnen_bald(self):
@@ -652,6 +895,14 @@ class JobsucheApp:
     def _geocoding_fertig(self):
         self._geocoding_laeuft = False
         self._geocoding_fortschritt = None
+        # Orte, die eben erst aufgelöst wurden, liefern jetzt auch eine Entfernung
+        # (und damit ggf. neue Empfehlungen).
+        ohne_entfernung = [j for j in self.pool if j.distance_km is None]
+        for job in ohne_entfernung:
+            assess_fit(job, self.cfg, self.geocoder)
+        if any(j.distance_km is not None for j in ohne_entfernung):
+            save_pool(self.pool_pfad, self.pool)
+            self._refresh_empfehlungen()
         if self._geocoding_erneut:
             self._geocoding_erneut = False
             self._geocoding_starten()
@@ -697,7 +948,7 @@ class JobsucheApp:
             self.tree_ergebnis.heading(c, text=text)
         for row in self.tree_ergebnis.get_children():
             self.tree_ergebnis.delete(row)
-        sichtbar = [j for j in self.pool if j.status not in ("applied", "capped", "skipped")]
+        sichtbar = [j for j in self.pool if j.status not in ERLEDIGT]
         sichtbar.sort(key=lambda j: j.score, reverse=True)
         for job in sichtbar:
             self.tree_ergebnis.insert("", "end", iid=job.id, values=(
@@ -706,16 +957,19 @@ class JobsucheApp:
 
         gesamt = len(self.pool)
         beworben = sum(1 for j in self.pool if j.status == "applied")
+        abgelehnt = sum(1 for j in self.pool if j.status == "rejected")
         limitiert = sum(1 for j in self.pool if j.status == "capped")
         ignoriert = sum(1 for j in self.pool if j.status == "skipped")
-        offen = gesamt - beworben - limitiert - ignoriert
+        offen = gesamt - beworben - abgelehnt - limitiert - ignoriert
         self.stats_label.configure(text=(
             f"Stellen im Pool: {gesamt}\n"
             f"Bereits beworben/markiert: {beworben}\n"
+            f"Abgelehnt: {abgelehnt}\n"
             f"Firma am Limit (übersprungen): {limitiert}\n"
             f"Manuell ignoriert: {ignoriert}\n"
             f"Offen zur Bewerbung: {offen}"
         ))
+        self._refresh_empfehlungen()
         self._karte_aktualisieren()
 
     def _get_selected_job(self, tree):
@@ -835,7 +1089,7 @@ class JobsucheApp:
         ttk.Label(btns, text=f"Gespeichert unter: {pfad}").pack(side="left", padx=10)
 
     def _export_csv(self):
-        sichtbar = [j for j in self.pool if j.status not in ("applied", "capped", "skipped")]
+        sichtbar = [j for j in self.pool if j.status not in ERLEDIGT]
         sichtbar.sort(key=lambda j: j.score, reverse=True)
         pfad = os.path.join(BASISORDNER, self.cfg["speicher"]["datenordner"], "ergebnis_export.csv")
         with open(pfad, "w", newline="", encoding="utf-8") as f:

@@ -15,6 +15,7 @@ Anbieter erneut umstellt: einmal die Antwort mit
     "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs?was=Python&size=1"
 ansehen und die Feldnamen unten in _parse_angebot() anpassen.
 """
+import base64
 import logging
 import time
 from typing import List
@@ -24,6 +25,10 @@ import requests
 from ..schema import Job
 
 BASE_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs"
+# Die Trefferliste (v6) enthält keine Stellenbeschreibung - die liefert nur der
+# Detail-Endpunkt, und der ist (noch) unter v4 erreichbar. Die Referenznummer
+# wird dafür Base64-kodiert in den Pfad gesetzt.
+DETAIL_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobdetails/"
 API_KEY = "jobboerse-jobsuche"
 
 NAME = "bundesagentur"
@@ -60,7 +65,21 @@ def _parse_angebot(a: dict) -> Job:
         ),
         lat=lokation.get("breite"),
         lon=lokation.get("laenge"),
+        distance_km=a.get("entfernung"),
     )
+
+
+def fetch_description(refnr: str) -> str:
+    """Volltext der Anzeige über den Detail-Endpunkt ("" bei Fehlern - die
+    Stelle bleibt dann einfach ohne Beschreibung im Pool)."""
+    kodiert = base64.b64encode(refnr.encode("utf-8")).decode("ascii")
+    try:
+        resp = requests.get(DETAIL_URL + kodiert, headers={"X-API-Key": API_KEY}, timeout=15)
+        resp.raise_for_status()
+        return resp.json().get("stellenangebotsBeschreibung") or ""
+    except (requests.RequestException, ValueError) as exc:
+        log.warning("BA-Details für %s nicht ladbar: %s", refnr, exc)
+        return ""
 
 
 def search(keyword: str, ort: str, umkreis_km: int, max_alter_tage: int, max_ergebnisse: int) -> List[Job]:
@@ -117,4 +136,14 @@ def search_all(cfg: dict) -> List[Job]:
             results.extend(search(
                 kw, ort, suche["umkreis_km"], suche["max_alter_tage"], suche["ergebnisse_pro_quelle"],
             ))
+
+    if cfg["quellen"][NAME].get("details_laden", False):
+        # Dieselbe Stelle taucht oft unter mehreren Suchbegriffen auf - erst
+        # deduplizieren, dann pro Stelle nur eine Detail-Anfrage stellen.
+        eindeutig = {j.external_id: j for j in results}
+        log.info("Lade Beschreibungen für %d eindeutige Stellen ...", len(eindeutig))
+        for job in eindeutig.values():
+            job.description = fetch_description(job.external_id)
+            time.sleep(0.3)
+        results = list(eindeutig.values())
     return results

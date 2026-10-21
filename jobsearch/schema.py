@@ -27,13 +27,19 @@ class Job:
     # jobsearch/geo.py sie für die Karte aus dem Ortsnamen.
     lat: Optional[float] = None
     lon: Optional[float] = None
+    # Entfernung zum Suchort in km, falls die Quelle sie liefert (BA); sonst
+    # berechnet jobsearch/fit.py sie aus den Koordinaten bzw. dem Geocache.
+    distance_km: Optional[float] = None
 
     # wird von der Pipeline befüllt, nicht beim Scrapen selbst
     id: str = field(default="", init=False)
     score: float = field(default=0.0, init=False)
     score_breakdown: dict = field(default_factory=dict, init=False)
+    fit: float = field(default=0.0, init=False)          # 0-100: realistische Chance (jobsearch/fit.py)
+    fit_notes: list = field(default_factory=list, init=False)
     merged_sources: list = field(default_factory=list, init=False)
-    status: str = field(default="new", init=False)  # new | applied | capped | skipped | moeglich_beworben
+    # new | applied | rejected | capped | skipped | moeglich_beworben
+    status: str = field(default="new", init=False)
     first_seen: float = field(default_factory=time.time, init=False)
 
     def __post_init__(self):
@@ -50,10 +56,13 @@ class Job:
             url=d["url"], source=d["source"], external_id=d["external_id"],
             description=d.get("description", ""), date_posted=d.get("date_posted", ""),
             remote=d.get("remote"), lat=d.get("lat"), lon=d.get("lon"),
+            distance_km=d.get("distance_km"),
         )
         job.id = d.get("id", job.id)
         job.score = d.get("score", 0.0)
         job.score_breakdown = d.get("score_breakdown", {})
+        job.fit = d.get("fit", 0.0)
+        job.fit_notes = d.get("fit_notes", [])
         job.merged_sources = d.get("merged_sources", job.merged_sources)
         job.status = d.get("status", "new")
         job.first_seen = d.get("first_seen", job.first_seen)

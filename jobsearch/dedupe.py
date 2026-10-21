@@ -47,6 +47,8 @@ def merge_pool(new_jobs: List[Job], existing_jobs: List[Job], threshold: int) ->
             # über Stepstone gefundener Job auf der Karte exakt sitzt.
             if match.lat is None and nj.lat is not None:
                 match.lat, match.lon = nj.lat, nj.lon
+            if match.distance_km is None and nj.distance_km is not None:
+                match.distance_km = nj.distance_km
         else:
             pool.append(nj)
             index_by_company.setdefault(norm_company, []).append(nj)

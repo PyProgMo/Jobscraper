@@ -13,8 +13,9 @@ sys.path.insert(0, BASISORDNER)
 
 from jobsearch.config import load_config
 from jobsearch.dedupe import merge_pool
+from jobsearch.fit import assess_fit
 from jobsearch.scoring import score_job
-from jobsearch import scrapers
+from jobsearch import geo, scrapers
 from jobsearch.storage import load_pool, save_pool
 from jobsearch.tracker import apply_limits
 
@@ -40,8 +41,20 @@ def main():
     bestehender_pool = load_pool(pool_pfad)
     gesamt_pool = merge_pool(neue_jobs, bestehender_pool, cfg["dedupe"]["fuzzy_schwelle"])
 
+    # Entfernung zum Suchzentrum: BA liefert sie mit, bei den übrigen Quellen
+    # muss der Ort erst (einmalig, dann aus dem Cache) nachgeschlagen werden.
+    geocoder = geo.Geocoder(os.path.join(BASISORDNER, speicher["datenordner"], "geocache.json"))
+    for name in geo.fehlende_orte([j for j in gesamt_pool if j.distance_km is None], geocoder):
+        try:
+            geocoder.nachschlagen(name)
+        except Exception as exc:  # offline o.ä.: Entfernung bleibt unbekannt, der Lauf geht weiter
+            log.warning("Ortssuche abgebrochen bei %r: %s", name, exc)
+            break
+    geocoder.speichern()
+
     for job in gesamt_pool:
         score_job(job, cfg)
+        assess_fit(job, cfg, geocoder)
 
     gesamt_pool = apply_limits(gesamt_pool, cfg, BASISORDNER)
     gesamt_pool.sort(key=lambda j: j.score, reverse=True)
